@@ -1,30 +1,30 @@
-#include <sys/socket.h> 
-#include <arpa/inet.h>  
-#include <string.h>     
-#include <unistd.h>    
+-
+#include <arpa/inet.h>      
+#include <string.h>         
+#include <unistd.h>         
 #include <iostream>
-#include <thread>      
+#include <thread>           
 #include <vector>
 #include <mutex>
 
 using namespace std;
 
-mutex mtx; //  sincronización de los hilos
+mutex mtx; 
 
 // Función que maneja la conexión con un cliente
 void jugar(int socket_cliente, struct sockaddr_in direccionCliente) {
-    char buffer[1024]; // Buffer para almacenar los datos recibidos
-    memset(buffer, '\0', sizeof(char)*1024); // Inicialización del buffer
-    int n_bytes = 0; // Número de bytes recibidos
+    char buffer[1024]; 
+    memset(buffer, '\0', sizeof(char)*1024); 
+    int n_bytes = 0; 
 
-    char ip[INET_ADDRSTRLEN]; // Buffer para la dirección IP del cliente
-    inet_ntop(AF_INET, &(direccionCliente.sin_addr), ip, INET_ADDRSTRLEN); // Conversión de la dirección IP a formato de cadena
+    char ip[INET_ADDRSTRLEN]; 
+    inet_ntop(AF_INET, &(direccionCliente.sin_addr), ip, INET_ADDRSTRLEN); 
 
-    cout << "[" << ip << ":" << ntohs(direccionCliente.sin_port) << "] Nuevo jugador." << endl; // Mensaje de bienvenida al nuevo jugador
+    cout << "[" << ip << ":" << ntohs(direccionCliente.sin_port) << "] Nuevo jugador." << endl; 
 
     // Bucle para recibir mensajes del cliente
-    while ((n_bytes = recv(socket_cliente, buffer, 1024, 0))) {
-        buffer[n_bytes] = '\0'; // Agregar terminador nulo al final del mensaje recibido
+    while ((n_bytes = recv(socket_cliente, buffer, 1024, 0)) > 0) {
+        buffer[n_bytes] = '\0'; 
                 
         if (buffer[0] == 'Q') { // Si el cliente envía 'Q', termina la conexión
             cout << "[" << ip << ":" << ntohs(direccionCliente.sin_port) << "] Sale del juego." << endl;
@@ -33,17 +33,20 @@ void jugar(int socket_cliente, struct sockaddr_in direccionCliente) {
         }
 
         switch (buffer[0]) {
-            case 'C': // Si el cliente envía 'C', indica un movimiento en el juego
+            case 'C': 
                 {
-                    string line(&buffer[0]); // Convertir el buffer a una cadena de C++
-                    cout << "[" << ip << ":" << ntohs(direccionCliente.sin_port) << "] Columna: " << line[2] << endl; // Imprimir la columna recibida
-                    send(socket_cliente, "ok\n", 3, 0); // Enviar una respuesta al cliente
+                    string line(&buffer[0]); 
+                    cout << "[" << ip << ":" << ntohs(direccionCliente.sin_port) << "] Columna: " << line[2] << endl; 
+                    send(socket_cliente, "ok\n", 3, 0); 
                     break; // Salir del switch
                 }
             default:
-                send(socket_cliente, "error\n", 6, 0); // Enviar un mensaje de error al cliente si el comando no es reconocido
+                send(socket_cliente, "error\n", 6, 0); 
         }
     }
+
+    
+    close(socket_cliente);
 }
 
 int main(int argc, char **argv) {
@@ -54,14 +57,14 @@ int main(int argc, char **argv) {
     }
 
     int port = atoi(argv[1]); // Convertir el argumento del puerto a un entero
-    int socket_server = 0; // Descriptor del socket del servidor
+    int socket_server = 0; 
     struct sockaddr_in direccionServidor, direccionCliente; // Estructuras para las direcciones del servidor y cliente
     
     // Crear un socket para el servidor
     cout << "Creando socket de escucha ..." << endl;
     if ((socket_server = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
         cout << "Error creando el socket de escucha" << endl;
-        exit(EXIT_FAILURE); // Salir del programa con un código de error
+        exit(EXIT_FAILURE); 
     }
     
     // Configurar la dirección del servidor
@@ -97,3 +100,22 @@ int main(int argc, char **argv) {
         int socket_cliente;
 
         // Aceptar una conexión
+        if ((socket_cliente = accept(socket_server, (struct sockaddr *) &direccionCliente, &addr_size)) < 0) {
+            cout << "Error al aceptar la conexión del cliente" << endl;
+            continue; // Si hay un error, continuar esperando la próxima conexión
+        }
+
+        // Una vez aceptada la conexión, iniciar un nuevo hilo para manejar al cliente
+        threads.emplace_back(jugar, socket_cliente, direccionCliente);
+    }
+
+    // Unirse a todos los hilos antes de terminar el programa
+    for (auto& thread : threads) {
+        thread.join();
+    }
+
+    
+    close(socket_server);
+
+    return 0;
+}
